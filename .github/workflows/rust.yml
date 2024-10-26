@@ -35,7 +35,7 @@ jobs:
       uses: actions/upload-artifact@v4.4.3
       with:
         name: Riri-aarch
-        path: target/release/bundle/osx/Riri.app
+        path: target/release/bundle/osx
 
   build-x86-64:
     runs-on: macos-13
@@ -52,5 +52,5 @@ jobs:
       uses: actions/upload-artifact@v4.4.3
       with:
         name: Riri-x86-64
-        path: target/release/bundle/osx/Riri.app
+        path: target/release/bundle/osx
       

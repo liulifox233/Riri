@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::{
     lyrics::LyricsFormat,
     models::{apple_music::AppleMusic, user_storefront::UserStorefront},
@@ -8,10 +6,9 @@ use anyhow::{anyhow, Result};
 use fancy_regex::Regex;
 use reqwest::header::HeaderMap;
 use reqwest::Client;
-use system_status_bar_macos::{Menu, StatusItem};
+use std::path::PathBuf;
+use system_status_bar_macos::{Menu, MenuItem, StatusItem};
 use tokio::time;
-
-
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct Riri {
@@ -51,7 +48,14 @@ impl Riri {
 
     pub async fn run(&self) -> Result<()> {
         let mut not_download_able = Vec::new();
-        let mut status_item = StatusItem::new("🎵", Menu::new(vec![]));
+        let mut status_item = StatusItem::new(
+            "🎵",
+            Menu::new(vec![MenuItem::new(
+                "Quit",
+                Some(Box::new(|| std::process::exit(0))),
+                None,
+            )]),
+        );
         loop {
             let current_track = apple_music::AppleMusic::get_current_track().ok();
             if current_track.is_none() {
@@ -75,7 +79,10 @@ impl Riri {
                     status_item.set_title(&lyric);
                     time::sleep(time::Duration::from_secs_f64(duration)).await;
                 } else {
-                    status_item.set_title(format!("▶︎ {}", LyricsFormat::length_cut(&name, self.length.unwrap())));
+                    status_item.set_title(format!(
+                        "▶︎ {}",
+                        LyricsFormat::length_cut(&name, self.length.unwrap())
+                    ));
                     if not_download_able.contains(&format!("{}-{}", name, artist)) {
                         time::sleep(time::Duration::from_secs(1)).await;
                         continue;
@@ -196,7 +203,7 @@ impl Riri {
             .lyrics
             .data
             .first()
-            .unwrap()
+            .ok_or(anyhow!("No lyrics found"))?
             .attributes
             .ttml;
         let lyric_xml = quick_xml::de::from_str(ttml)?;

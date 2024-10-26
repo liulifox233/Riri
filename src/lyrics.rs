@@ -72,7 +72,7 @@ impl LyricsFormat {
                 if duration > 1.0 {
                     duration = 0.1;
                 }
-                (" ".to_string(), duration)
+                ("   ".to_string(), duration)
             }
         };
 

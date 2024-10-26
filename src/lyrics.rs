@@ -33,7 +33,13 @@ impl LyricsFormat {
         Ok(())
     }
 
-    pub fn get_lyrics(name: &String, artist: &String, position: f64, offset: f64) -> (String, f64) {
+    pub fn get_lyrics(
+        name: &String,
+        artist: &String,
+        position: f64,
+        offset: f64,
+        length: i64,
+    ) -> (String, f64) {
         let position = position + offset;
         let path = dirs::data_local_dir()
             .unwrap()
@@ -43,21 +49,17 @@ impl LyricsFormat {
         let data = std::fs::read_to_string(path).unwrap();
         let lyrics = quick_xml::de::from_str::<LyricXML>(&data).unwrap();
         let current_line = lyrics.body.div.iter().flat_map(|div| &div.p).find(|line| {
-            position < Self::parse_time(&line.end)
-                && position > Self::parse_time(&line.begin)
+            position < Self::parse_time(&line.end) && position > Self::parse_time(&line.begin)
         });
 
         let (lyric, duration) = match current_line {
             Some(line) => {
-                let lyric = match line.line.chars().count() {
-                    0..15 => line.line.clone(),
-                    _ => format!("{}...", line.line.chars().take(12).collect::<String>()),
-                };
+                let lyric = Self::lyric_cut(&line.line, length);
                 let duration = Self::parse_time(&line.end) - position;
                 (lyric, duration)
             }
             None => {
-                let duration = match lyrics
+                let mut duration = match lyrics
                     .body
                     .div
                     .iter()
@@ -67,6 +69,9 @@ impl LyricsFormat {
                     Some(line) => Self::parse_time(&line.begin) - position,
                     None => 1.0,
                 };
+                if duration > 1.0 {
+                    duration = 0.1;
+                }
                 (" ".to_string(), duration)
             }
         };
@@ -87,6 +92,24 @@ impl LyricsFormat {
             _ => 0.0,
         }
     }
+
+    fn lyric_cut(lyric: &String, len: i64) -> String {
+        let mut length = 0;
+        let mut temp = String::new();
+        for c in lyric.chars() {
+            if c.is_ascii_alphabetic() || c.is_numeric() || c.is_whitespace() {
+                length += 1;
+            } else {
+                length += 2;
+            }
+            if length > len {
+                temp.push_str("...");
+                break;
+            }
+            temp.push(c);
+        }
+        temp
+    }
 }
 
 #[cfg(test)]
@@ -98,5 +121,25 @@ mod tests {
         let time = "1:30".to_string();
         let result = LyricsFormat::parse_time(&time);
         assert_eq!(result, 90.0);
+    }
+
+    #[test]
+    fn test_lyric_cut() {
+        let lyric = "無情な世界を恨んだ目は どうしようもなく愛を欲してた".to_string();
+        let mut length = 0;
+        let mut temp = String::new();
+        for c in lyric.chars() {
+            if c.is_ascii_alphabetic() || c.is_numeric() || c.is_whitespace() {
+                length += 1;
+            } else {
+                length += 2;
+            }
+            if length > 24 {
+                temp.push_str("...");
+                break;
+            }
+            temp.push(c);
+        }
+        assert_eq!(temp, "無情な世界を恨んだ目は ...");
     }
 }

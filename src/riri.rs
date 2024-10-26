@@ -19,11 +19,12 @@ pub struct Riri {
     expire: Option<i64>,
     #[serde(default)]
     offset: f64,
+    length: Option<i64>,
 }
 
 impl Riri {
     pub async fn new(path: PathBuf) -> Result<Self> {
-        let mut riri =serde_yaml::from_str::<Riri>(&std::fs::read_to_string(&path)?)?;
+        let mut riri = serde_yaml::from_str::<Riri>(&std::fs::read_to_string(&path)?)?;
 
         let now = chrono::Utc::now().timestamp_millis();
 
@@ -35,7 +36,10 @@ impl Riri {
         if riri.storefront.is_empty() {
             riri.get_user_storefront().await?;
         }
-        
+
+        if riri.length.is_none() {
+            riri.length = Some(24);
+        }
 
         let config = std::fs::File::create(path)?;
         serde_yaml::to_writer(config, &riri)?;
@@ -45,8 +49,7 @@ impl Riri {
 
     pub async fn run(&self) -> Result<()> {
         let mut not_download_able = Vec::new();
-        let mut status_item = StatusItem::new("", Menu::new(vec![]));
-
+        let mut status_item = StatusItem::new("🎵", Menu::new(vec![]));
         loop {
             let current_track = apple_music::AppleMusic::get_current_track().ok();
             if current_track.is_none() {
@@ -60,23 +63,37 @@ impl Riri {
                     apple_music::AppleMusic::get_application_data().map_err(anyhow::Error::msg)?;
                 let position = app_data.player_position.unwrap_or(0.0);
                 if self.check_lyrics_exist(&name, &artist) {
-                    let (lyric, duration) = LyricsFormat::get_lyrics(&name, &artist, position, self.offset);
+                    let (lyric, duration) = LyricsFormat::get_lyrics(
+                        &name,
+                        &artist,
+                        position,
+                        self.offset,
+                        self.length.unwrap(),
+                    );
                     status_item.set_title(&lyric);
                     time::sleep(time::Duration::from_secs_f64(duration)).await;
                 } else {
+                    status_item.set_title(format!("▶︎{}", &name));
                     if not_download_able.contains(&format!("{}-{}", name, artist)) {
                         time::sleep(time::Duration::from_secs(1)).await;
                         continue;
                     }
                     println!("Downloading lyrics for {} by {}", name, artist);
-                    let id = self.get_id_by_name_artist(&name, &artist).await?;
-                    match self.download_by_id(&id, &name, &artist).await {
-                        Ok(_) => {
-                            println!("Download success!");
+                    match self.get_id_by_name_artist(&name, &artist).await {
+                        Ok(id) => {
+                            println!("Get id success!");
+                            match self.download_by_id(&id, &name, &artist).await {
+                                Ok(_) => {
+                                    println!("Download success!");
+                                }
+                                Err(e) => {
+                                    println!("{:?}", e);
+                                    not_download_able.push(format!("{}-{}", name, artist));
+                                }
+                            };
                         }
                         Err(e) => {
                             println!("{:?}", e);
-                            status_item.set_title(format!("▶︎{}", &name));
                             not_download_able.push(format!("{}-{}", name, artist));
                         }
                     };
@@ -205,7 +222,8 @@ impl Riri {
             .ok_or(anyhow!("Invalid JSON structure"))?
             .iter()
             .find(|data| {
-                data["attributes"]["name"] == *name && data["attributes"]["artistName"] == *artist_name
+                data["attributes"]["name"] == *name
+                    && data["attributes"]["artistName"] == *artist_name
             })
             .ok_or(anyhow!("Song not found"))?["id"];
         println!("id: {}", id);
@@ -225,6 +243,7 @@ mod tests {
             authorization: None,
             expire: None,
             offset: 0.0,
+            length: None,
         };
         riri.get_authorization().await.unwrap();
 

@@ -26,6 +26,7 @@ user_token: # Get from your Apple Music web cookie.
 authorization: # Option
 expire: # Option
 offset: 1.0 # Option, If the delay between your lyrics and the music is too large, then you can adjust this.
+length: 24 #Option, Lyrics length
 ```
 
 Lyrics Data was locate at `/Users/username/Library/Application Support/Riri/Data`

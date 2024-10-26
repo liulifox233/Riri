@@ -22,4 +22,4 @@ urlencoding = "2.1.3"
 [package.metadata.bundle]
 name = "Riri"
 identifier = "com.liulifox.riri"
-icon = ["i_ll.jpeg"]
+icon = ["i_ll.png"]

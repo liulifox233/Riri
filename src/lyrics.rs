@@ -54,7 +54,7 @@ impl LyricsFormat {
 
         let (lyric, duration) = match current_line {
             Some(line) => {
-                let lyric = Self::lyric_cut(&line.line, length);
+                let lyric = Self::length_cut(&line.line, length);
                 let duration = Self::parse_time(&line.end) - position;
                 (lyric, duration)
             }
@@ -93,7 +93,7 @@ impl LyricsFormat {
         }
     }
 
-    fn lyric_cut(lyric: &String, len: i64) -> String {
+    pub fn length_cut(lyric: &String, len: i64) -> String {
         let mut length = 0;
         let mut temp = String::new();
         for c in lyric.chars() {
@@ -124,22 +124,9 @@ mod tests {
     }
 
     #[test]
-    fn test_lyric_cut() {
+    fn test_cut() {
         let lyric = "無情な世界を恨んだ目は どうしようもなく愛を欲してた".to_string();
-        let mut length = 0;
-        let mut temp = String::new();
-        for c in lyric.chars() {
-            if c.is_ascii_alphabetic() || c.is_numeric() || c.is_whitespace() {
-                length += 1;
-            } else {
-                length += 2;
-            }
-            if length > 24 {
-                temp.push_str("...");
-                break;
-            }
-            temp.push(c);
-        }
-        assert_eq!(temp, "無情な世界を恨んだ目は ...");
+        let lyric = LyricsFormat::length_cut(&lyric, 24);
+        assert_eq!(lyric, "無情な世界を恨んだ目は ...");
     }
 }

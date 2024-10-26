@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::{
     lyrics::LyricsFormat,
-    models::{apple_music::AppleMusic, lyric_xml::LyricXML, user_storefront::UserStorefront},
+    models::{apple_music::AppleMusic, user_storefront::UserStorefront},
 };
 use anyhow::{anyhow, Result};
 use fancy_regex::Regex;
@@ -10,6 +10,8 @@ use reqwest::header::HeaderMap;
 use reqwest::Client;
 use system_status_bar_macos::{Menu, StatusItem};
 use tokio::time;
+
+
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct Riri {
@@ -73,7 +75,7 @@ impl Riri {
                     status_item.set_title(&lyric);
                     time::sleep(time::Duration::from_secs_f64(duration)).await;
                 } else {
-                    status_item.set_title(format!("▶︎{}", &name));
+                    status_item.set_title(format!("▶︎ {}", LyricsFormat::length_cut(&name, self.length.unwrap())));
                     if not_download_able.contains(&format!("{}-{}", name, artist)) {
                         time::sleep(time::Duration::from_secs(1)).await;
                         continue;
@@ -188,19 +190,16 @@ impl Riri {
         if apple_music.data.first().is_none() {
             return Err(anyhow!("No such a song"));
         }
-        if apple_music
-            .data
-            .first()
-            .unwrap()
+        let data = apple_music.data.first().unwrap();
+        let ttml = &data
             .relationships
             .lyrics
             .data
             .first()
-            .is_none()
-        {
-            return Err(anyhow!("No lyrics found"));
-        };
-        let lyric_xml = LyricXML::from(apple_music);
+            .unwrap()
+            .attributes
+            .ttml;
+        let lyric_xml = quick_xml::de::from_str(ttml)?;
         let lyrics = LyricsFormat::LyricXML(lyric_xml);
         lyrics.save(name, artist_name)?;
         Ok(())
@@ -226,7 +225,6 @@ impl Riri {
                     && data["attributes"]["artistName"] == *artist_name
             })
             .ok_or(anyhow!("Song not found"))?["id"];
-        println!("id: {}", id);
         Ok(id.as_str().unwrap().to_string())
     }
 }

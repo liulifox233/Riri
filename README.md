@@ -29,4 +29,4 @@ offset: 1.0 # Option, If the delay between your lyrics and the music is too larg
 length: 24 #Option, Lyrics length
 ```
 
-Lyrics Data was locate at `/Users/username/Library/Application Support/Riri/Data`
+Lyrics data was locate at `/Users/username/Library/Application Support/Riri/Data`

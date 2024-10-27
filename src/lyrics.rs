@@ -82,7 +82,10 @@ impl LyricsFormat {
     fn parse_time(time_string: &String) -> f64 {
         let time = time_string.split(":").collect::<Vec<&str>>();
         match time.len() {
-            1 => time[0].parse::<f64>().unwrap(),
+            1 => match time[0].contains("s") {
+                true => time[0].replace("s", "").parse::<f64>().unwrap(),
+                false => time[0].parse::<f64>().unwrap(),
+            }
             2 => time[0].parse::<f64>().unwrap() * 60.0 + time[1].parse::<f64>().unwrap(),
             3 => {
                 time[0].parse::<f64>().unwrap() * 3600.0

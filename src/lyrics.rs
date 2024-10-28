@@ -48,6 +48,9 @@ impl LyricsFormat {
             .join(format!("{}-{}.xml", name, artist));
         let data = std::fs::read_to_string(path).unwrap();
         let lyrics = quick_xml::de::from_str::<LyricXML>(&data).unwrap();
+
+        let start_time = LyricsFormat::parse_time(&lyrics.body.div[0].p[0].begin);
+
         let current_line = lyrics.body.div.iter().flat_map(|div| &div.p).find(|line| {
             position < Self::parse_time(&line.end) && position > Self::parse_time(&line.begin)
         });
@@ -55,7 +58,10 @@ impl LyricsFormat {
         let (lyric, duration) = match current_line {
             Some(line) => {
                 let lyric = Self::length_cut(&line.line, length);
-                let duration = Self::parse_time(&line.end) - position;
+                let mut duration = Self::parse_time(&line.end) - position;
+                if duration > 0.3 {
+                    duration = 0.3;
+                }
                 (lyric, duration)
             }
             None => {
@@ -69,10 +75,15 @@ impl LyricsFormat {
                     Some(line) => Self::parse_time(&line.begin) - position,
                     None => 1.0,
                 };
-                if duration > 1.0 {
-                    duration = 0.1;
+                if duration > 0.3 {
+                    duration = 0.3;
                 }
-                ("   ".to_string(), duration)
+                let title = match start_time > position {
+                    true => "▶︎ ".to_string() + &Self::length_cut(name, length),
+                    false => "   ".to_string(),
+
+                };
+                (title, duration)
             }
         };
 

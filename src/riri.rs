@@ -7,7 +7,6 @@ use fancy_regex::Regex;
 use reqwest::header::HeaderMap;
 use reqwest::Client;
 use std::path::PathBuf;
-use system_status_bar_macos::{Menu, MenuItem, StatusItem};
 use tokio::time;
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -46,19 +45,13 @@ impl Riri {
         Ok(riri)
     }
 
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(self, tx: tokio::sync::mpsc::Sender<String>) -> Result<()> {
         let mut not_download_able = Vec::new();
-        let mut status_item = StatusItem::new(
-            "🎵",
-            Menu::new(vec![MenuItem::new(
-                "Quit",
-                Some(Box::new(|| std::process::exit(0))),
-                None,
-            )]),
-        );
+
         loop {
             let current_track = apple_music::AppleMusic::get_current_track().ok();
             if current_track.is_none() {
+                tx.send("🎵".to_string()).await?;
                 time::sleep(time::Duration::from_secs(1)).await;
                 continue;
             } else {
@@ -76,13 +69,14 @@ impl Riri {
                         self.offset,
                         self.length.unwrap(),
                     );
-                    status_item.set_title(&lyric);
+                    tx.send(lyric).await?;
                     time::sleep(time::Duration::from_secs_f64(duration)).await;
                 } else {
-                    status_item.set_title(format!(
+                    tx.send(format!(
                         "▶︎ {}",
                         LyricsFormat::length_cut(&name, self.length.unwrap())
-                    ));
+                    ))
+                    .await?;
                     if not_download_able.contains(&format!("{}-{}", name, artist)) {
                         time::sleep(time::Duration::from_secs(1)).await;
                         continue;

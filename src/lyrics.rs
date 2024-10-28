@@ -81,7 +81,6 @@ impl LyricsFormat {
                 let title = match start_time > position {
                     true => "▶︎ ".to_string() + &Self::length_cut(name, length),
                     false => "   ".to_string(),
-
                 };
                 (title, duration)
             }
@@ -96,7 +95,7 @@ impl LyricsFormat {
             1 => match time[0].contains("s") {
                 true => time[0].replace("s", "").parse::<f64>().unwrap(),
                 false => time[0].parse::<f64>().unwrap(),
-            }
+            },
             2 => time[0].parse::<f64>().unwrap() * 60.0 + time[1].parse::<f64>().unwrap(),
             3 => {
                 time[0].parse::<f64>().unwrap() * 3600.0

@@ -13,9 +13,29 @@ async fn main() -> Result<()> {
         std::fs::create_dir(&config_dir)?
     }
 
-    let riri = riri::Riri::new(config_dir.join("config.yml")).await?;
-
     spawn(async_infinite_event_loop(time::sleep));
 
-    riri.run().await
+    let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+
+    tokio::task::spawn({
+        let riri = riri::Riri::new(config_dir.join("config.yml")).await?;
+        riri.run(tx)
+    });
+
+    println!("Riri is running...");
+
+    let mut status_item = StatusItem::new(
+        "🎵",
+        Menu::new(vec![MenuItem::new(
+            "Quit",
+            Some(Box::new(|| std::process::exit(0))),
+            None,
+        )]),
+    );
+
+    loop {
+        if let Some(title) = rx.recv().await {
+            status_item.set_title(&title);
+        }
+    }
 }

@@ -26,11 +26,20 @@ async fn main() -> Result<()> {
 
     let mut status_item = StatusItem::new(
         "🎵",
-        Menu::new(vec![MenuItem::new(
-            "Quit",
-            Some(Box::new(|| std::process::exit(0))),
-            None,
-        )]),
+        Menu::new(vec![
+            MenuItem::new(
+                "Play/Pause",
+                Some(Box::new(|| {
+                    let _ = apple_music::AppleMusic::playpause();
+                })),
+                None,
+            ),
+            MenuItem::new(
+                "Quit",
+                Some(Box::new(|| std::process::exit(0))),
+                None,
+            ),
+        ]),
     );
 
     loop {

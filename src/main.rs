@@ -34,11 +34,7 @@ async fn main() -> Result<()> {
                 })),
                 None,
             ),
-            MenuItem::new(
-                "Quit",
-                Some(Box::new(|| std::process::exit(0))),
-                None,
-            ),
+            MenuItem::new("Quit", Some(Box::new(|| std::process::exit(0))), None),
         ]),
     );
 

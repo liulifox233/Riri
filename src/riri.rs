@@ -173,13 +173,8 @@ impl Riri {
         format!("https://amp-api-edge.music.apple.com/v1/catalog/{}/search?limit=5&platform=web&term={}&with=serverBubbles&types=songs%2Cactivities", self.storefront, format)
     }
 
-    pub async fn download_by_id(
-        &self,
-        song_id: &String,
-        name: &String,
-        artist_name: &String,
-    ) -> Result<()> {
-        let url = self.create_lyrics_url(&song_id);
+    pub async fn download_by_id(&self, song_id: &str, name: &str, artist_name: &str) -> Result<()> {
+        let url = self.create_lyrics_url(song_id);
 
         let headers = self.create_header();
         let client = Client::builder().default_headers(headers).build()?;
@@ -206,14 +201,10 @@ impl Riri {
         Ok(())
     }
 
-    pub async fn get_id_by_name_artist(
-        &self,
-        name: &String,
-        artist_name: &String,
-    ) -> Result<String> {
+    pub async fn get_id_by_name_artist(&self, name: &str, artist_name: &str) -> Result<String> {
         let headers = self.create_header();
         let client = Client::builder().default_headers(headers).build().unwrap();
-        let url = self.create_search_url(&name, &artist_name);
+        let url = self.create_search_url(name, artist_name);
 
         let res = client.get(url).send().await?;
         let res_json: serde_json::Value = res.json().await?;
@@ -222,8 +213,8 @@ impl Riri {
             .ok_or(anyhow!("Invalid JSON structure"))?
             .iter()
             .find(|data| {
-                data["attributes"]["name"] == *name
-                    && data["attributes"]["artistName"] == *artist_name
+                data["attributes"]["name"] == name
+                    && data["attributes"]["artistName"] == artist_name
             })
             .ok_or(anyhow!("Song not found"))?["id"];
         Ok(id.as_str().unwrap().to_string())

@@ -1,41 +1,38 @@
-use crate::models::{
-    lyric_json::LyricsJSON, lyric_xml::LyricXML, synced_lyric_xml::SyncedLyricXML,
-};
+use crate::models::lyric_xml::LyricXML;
 
 pub enum LyricsFormat {
-    LyricsJSON(LyricsJSON),
+    // LyricsJSON(LyricsJSON),
     LyricXML(LyricXML),
-    SyncedLyricXML(SyncedLyricXML),
+    // SyncedLyricXML(SyncedLyricXML),
 }
 
 use anyhow::Result;
 
 impl LyricsFormat {
-    pub fn save(&self, name: &String, artist: &String) -> Result<()> {
+    pub fn save(&self, name: &str, artist: &str) -> Result<()> {
         let data_path = dirs::data_local_dir().unwrap().join("Riri").join("Data");
         if !data_path.exists() {
             let _ = std::fs::create_dir(data_path.clone());
         }
         match &self {
-            &LyricsFormat::LyricsJSON(lyrics) => {
-                let data = serde_json::to_string_pretty(&lyrics)?;
-                std::fs::write(data_path.join(format!("{}-{}.json", name, artist)), data)?;
-            }
+            // &LyricsFormat::LyricsJSON(lyrics) => {
+            //     let data = serde_json::to_string_pretty(&lyrics)?;
+            //     std::fs::write(data_path.join(format!("{}-{}.json", name, artist)), data)?;
+            // }
             &LyricsFormat::LyricXML(lyrics) => {
                 let data = quick_xml::se::to_string(&lyrics)?;
                 std::fs::write(data_path.join(format!("{}-{}.xml", name, artist)), data)?;
-            }
-            &LyricsFormat::SyncedLyricXML(lyrics) => {
-                let data = quick_xml::se::to_string(&lyrics)?;
-                std::fs::write(data_path.join(format!("{}-{}.xml", name, artist)), data)?;
-            }
+            } // &LyricsFormat::SyncedLyricXML(lyrics) => {
+              //     let data = quick_xml::se::to_string(&lyrics)?;
+              //     std::fs::write(data_path.join(format!("{}-{}.xml", name, artist)), data)?;
+              // }
         }
         Ok(())
     }
 
     pub fn get_lyrics(
-        name: &String,
-        artist: &String,
+        name: &str,
+        artist: &str,
         position: f64,
         offset: f64,
         length: i64,
@@ -89,7 +86,7 @@ impl LyricsFormat {
         (lyric, duration)
     }
 
-    fn parse_time(time_string: &String) -> f64 {
+    fn parse_time(time_string: &str) -> f64 {
         let time = time_string.split(":").collect::<Vec<&str>>();
         match time.len() {
             1 => match time[0].contains("s") {
@@ -106,7 +103,7 @@ impl LyricsFormat {
         }
     }
 
-    pub fn length_cut(lyric: &String, len: i64) -> String {
+    pub fn length_cut(lyric: &str, len: i64) -> String {
         let mut length = 0;
         let mut temp = String::new();
         for c in lyric.chars() {

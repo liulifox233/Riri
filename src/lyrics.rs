@@ -10,10 +10,13 @@ use anyhow::Result;
 
 impl LyricsFormat {
     pub fn save(&self, name: &str, artist: &str) -> Result<()> {
+
         let data_path = dirs::data_local_dir().unwrap().join("Riri").join("Data");
+
         if !data_path.exists() {
             let _ = std::fs::create_dir(data_path.clone());
         }
+
         match &self {
             // &LyricsFormat::LyricsJSON(lyrics) => {
             //     let data = serde_json::to_string_pretty(&lyrics)?;
@@ -27,6 +30,7 @@ impl LyricsFormat {
               //     std::fs::write(data_path.join(format!("{}-{}.xml", name, artist)), data)?;
               // }
         }
+        
         Ok(())
     }
 
@@ -37,13 +41,17 @@ impl LyricsFormat {
         offset: f64,
         length: i64,
     ) -> (String, f64) {
+
         let position = position + offset;
+
         let path = dirs::data_local_dir()
             .unwrap()
             .join("Riri")
             .join("Data")
             .join(format!("{}-{}.xml", name, artist));
+
         let data = std::fs::read_to_string(path).unwrap();
+
         let lyrics = quick_xml::de::from_str::<LyricXML>(&data).unwrap();
 
         let start_time = LyricsFormat::parse_time(&lyrics.body.div[0].p[0].begin);
@@ -82,12 +90,14 @@ impl LyricsFormat {
                 (title, duration)
             }
         };
-
+        
         (lyric, duration)
     }
 
     fn parse_time(time_string: &str) -> f64 {
+
         let time = time_string.split(":").collect::<Vec<&str>>();
+        
         match time.len() {
             1 => match time[0].contains("s") {
                 true => time[0].replace("s", "").parse::<f64>().unwrap(),
@@ -104,14 +114,16 @@ impl LyricsFormat {
     }
 
     pub fn length_cut(lyric: &str, len: i64) -> String {
+
         let mut length = 0;
+
         let mut temp = String::new();
+
         for c in lyric.chars() {
-            if c.is_ascii_alphabetic() || c.is_numeric() || c.is_whitespace() {
-                length += 1;
-            } else {
-                length += 2;
-            }
+            length += match c {
+                'a'..='z' | 'A'..='Z' | '0'..='9' | ' ' => 1,
+                _ => 2,
+            };
             if length > len {
                 temp.push_str("...");
                 break;

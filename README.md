@@ -1,6 +1,12 @@
-# リリ/Riri
+<p align="center">
+    <img src="./i_ll.png" alt="Riri" width="25%">
+</p>
 
-A simple menu to display lyrics for Apple Music in MacOS.
+<div align="center">
+<h1> リリ/Riri </h1>
+</div>
+
+A simple menubar tool to display lyrics for Apple Music in MacOS.
 
 ## Usage
 

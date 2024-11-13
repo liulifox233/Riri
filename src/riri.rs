@@ -56,11 +56,16 @@ impl Riri {
                 continue;
             } else {
                 let track = current_track.unwrap();
+
                 let name = track.name.clone();
+
                 let artist = track.artist.clone();
+
                 let app_data =
                     apple_music::AppleMusic::get_application_data().map_err(anyhow::Error::msg)?;
+
                 let position = app_data.player_position.unwrap_or(0.0);
+
                 if self.check_lyrics_exist(&name, &artist) {
                     let (lyric, duration) = LyricsFormat::get_lyrics(
                         &name,
@@ -69,6 +74,7 @@ impl Riri {
                         self.offset,
                         self.length.unwrap(),
                     );
+
                     tx.send(lyric).await?;
                     time::sleep(time::Duration::from_secs_f64(duration)).await;
                 } else {
@@ -77,35 +83,48 @@ impl Riri {
                         LyricsFormat::length_cut(&name, self.length.unwrap())
                     ))
                     .await?;
+
                     if not_download_able.contains(&format!("{}-{}", name, artist)) {
                         time::sleep(time::Duration::from_secs(1)).await;
                         continue;
                     }
+
                     println!("Downloading lyrics for {} by {}", name, artist);
-                    match self.get_id_by_name_artist(&name, &artist).await {
-                        Ok(id) => {
-                            println!("Get id success!");
-                            match self.download_by_id(&id, &name, &artist).await {
-                                Ok(_) => {
-                                    println!("Download success!");
-                                }
-                                Err(e) => {
-                                    println!("{:?}", e);
-                                    not_download_able.push(format!("{}-{}", name, artist));
-                                }
-                            };
-                        }
-                        Err(e) => {
-                            println!("{:?}", e);
-                            not_download_able.push(format!("{}-{}", name, artist));
-                        }
+
+                    match self
+                        .download_lyrics(&name, &artist, &mut not_download_able).await
+                    {
+                        Ok(_) => println!("Download success!"),
+                        Err(e) => println!("Download error: {:?}", e),
                     };
                 }
             }
         }
     }
 
-    fn check_lyrics_exist(&self, name: &String, artist: &String) -> bool {
+    async fn download_lyrics(
+        &self,
+        name: &str,
+        artist: &str,
+        not_download_able: &mut Vec<String>,
+    ) -> Result<()> {
+        match self.get_id_by_name_artist(name, artist).await {
+            Ok(id) => {
+                println!("Get id success!");
+                if let Err(e) = self.download_by_id(&id, name, artist).await {
+                    not_download_able.push(format!("{}-{}", name, artist));
+                    return Err(e);
+                }
+                Ok(())
+            }
+            Err(e) => {
+                not_download_able.push(format!("{}-{}", name, artist));
+                Err(e)
+            }
+        }
+    }
+
+    fn check_lyrics_exist(&self, name: &str, artist: &str) -> bool {
         let path = dirs::data_local_dir()
             .unwrap()
             .join("Riri")
@@ -177,16 +196,21 @@ impl Riri {
         let url = self.create_lyrics_url(song_id);
 
         let headers = self.create_header();
+
         let client = Client::builder().default_headers(headers).build()?;
 
         let res = client.get(url).send().await?;
+
         let res_string = res.text().await.unwrap();
 
         let apple_music = serde_json::from_str::<AppleMusic>(&res_string)?;
+
         if apple_music.data.first().is_none() {
             return Err(anyhow!("No such a song"));
         }
+
         let data = apple_music.data.first().unwrap();
+
         let ttml = &data
             .relationships
             .lyrics
@@ -195,15 +219,18 @@ impl Riri {
             .ok_or(anyhow!("No lyrics found"))?
             .attributes
             .ttml;
+
         let lyric_xml = quick_xml::de::from_str(ttml)?;
+
         let lyrics = LyricsFormat::LyricXML(lyric_xml);
+
         lyrics.save(name, artist_name)?;
         Ok(())
     }
 
     pub async fn get_id_by_name_artist(&self, name: &str, artist_name: &str) -> Result<String> {
         let headers = self.create_header();
-        let client = Client::builder().default_headers(headers).build().unwrap();
+        let client = Client::builder().default_headers(headers).build()?;
         let url = self.create_search_url(name, artist_name);
 
         let res = client.get(url).send().await?;

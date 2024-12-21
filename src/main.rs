@@ -5,10 +5,16 @@ mod riri;
 use anyhow::Result;
 use system_status_bar_macos::*;
 use tokio::*;
+use tracing::info;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .init();
     let config_dir = dirs::config_dir().unwrap().join("Riri");
+
     if !config_dir.exists() {
         std::fs::create_dir(&config_dir)?
     }
@@ -22,7 +28,7 @@ async fn main() -> Result<()> {
         riri.run(tx)
     });
 
-    println!("Riri is running...");
+    info!("Riri is running...");
 
     let mut status_item = StatusItem::new(
         "🎵",

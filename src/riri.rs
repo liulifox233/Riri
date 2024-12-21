@@ -8,10 +8,11 @@ use reqwest::header::HeaderMap;
 use reqwest::Client;
 use std::path::PathBuf;
 use tokio::time;
+use tracing::info;
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct Riri {
-    storefront: String,
+    storefront: Option<String>,
     user_token: String,
     authorization: Option<String>,
     expire: Option<i64>,
@@ -31,7 +32,7 @@ impl Riri {
             riri.expire = Some(now + 12 * 60 * 60 * 1000);
         }
 
-        if riri.storefront.is_empty() {
+        if riri.storefront.is_none() {
             riri.get_user_storefront().await?;
         }
 
@@ -89,13 +90,14 @@ impl Riri {
                         continue;
                     }
 
-                    println!("Downloading lyrics for {} by {}", name, artist);
+                    info!("Downloading lyrics for {} by {}", name, artist);
 
                     match self
-                        .download_lyrics(&name, &artist, &mut not_download_able).await
+                        .download_lyrics(&name, &artist, &mut not_download_able)
+                        .await
                     {
-                        Ok(_) => println!("Download success!"),
-                        Err(e) => println!("Download error: {:?}", e),
+                        Ok(_) => info!("Download success!"),
+                        Err(e) => info!("Download error: {:?}", e),
                     };
                 }
             }
@@ -110,7 +112,7 @@ impl Riri {
     ) -> Result<()> {
         match self.get_id_by_name_artist(name, artist).await {
             Ok(id) => {
-                println!("Get id success!");
+                info!("Get id success!");
                 if let Err(e) = self.download_by_id(&id, name, artist).await {
                     not_download_able.push(format!("{}-{}", name, artist));
                     return Err(e);
@@ -154,12 +156,14 @@ impl Riri {
             .await?;
         let res_string = res.text().await?;
         let user_storefront: UserStorefront = serde_json::from_str(&res_string)?;
-        self.storefront = user_storefront
-            .data
-            .first()
-            .ok_or(anyhow!("Can't found user storefront"))?
-            .id
-            .clone();
+        self.storefront = Some(
+            user_storefront
+                .data
+                .first()
+                .ok_or(anyhow!("Can't found user storefront"))?
+                .id
+                .clone(),
+        );
         Ok(())
     }
 
@@ -183,13 +187,13 @@ impl Riri {
     }
 
     pub fn create_lyrics_url(&self, song_id: &str) -> String {
-        format!("https://amp-api.music.apple.com/v1/catalog/{}/songs/{}?include[songs]=albums,lyrics,syllable-lyrics", self.storefront, song_id)
+        format!("https://amp-api.music.apple.com/v1/catalog/{}/songs/{}?include[songs]=albums,lyrics,syllable-lyrics", self.storefront.clone().unwrap(), song_id)
     }
 
     pub fn create_search_url(&self, song_name: &str, artist_name: &str) -> String {
         let search_term = format!("{} {}", song_name, artist_name);
         let format = urlencoding::encode(search_term.as_str());
-        format!("https://amp-api-edge.music.apple.com/v1/catalog/{}/search?limit=5&platform=web&term={}&with=serverBubbles&types=songs%2Cactivities", self.storefront, format)
+        format!("https://amp-api-edge.music.apple.com/v1/catalog/{}/search?limit=5&platform=web&term={}&with=serverBubbles&types=songs%2Cactivities", self.storefront.clone().unwrap(), format)
     }
 
     pub async fn download_by_id(&self, song_id: &str, name: &str, artist_name: &str) -> Result<()> {
@@ -232,7 +236,6 @@ impl Riri {
         let headers = self.create_header();
         let client = Client::builder().default_headers(headers).build()?;
         let url = self.create_search_url(name, artist_name);
-
         let res = client.get(url).send().await?;
         let res_json: serde_json::Value = res.json().await?;
         let id = &res_json["results"]["top"]["data"]
@@ -244,6 +247,7 @@ impl Riri {
                     && data["attributes"]["artistName"] == artist_name
             })
             .ok_or(anyhow!("Song not found"))?["id"];
+
         Ok(id.as_str().unwrap().to_string())
     }
 }
@@ -255,7 +259,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_auth() {
         let mut riri = Riri {
-            storefront: String::new(),
+            storefront: None,
             user_token: String::new(),
             authorization: None,
             expire: None,

@@ -2,23 +2,23 @@ use serde::{Deserialize, Serialize};
 
 use super::apple_music::AppleMusic;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename = "tt")]
 pub struct LyricXML {
     pub body: Body,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Body {
     pub div: Vec<Div>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Div {
     pub p: Vec<P>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct P {
     #[serde(rename = "@begin")]
     pub begin: String,

@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use crate::models::lyric_xml::LyricXML;
 
 pub enum LyricsFormat {
@@ -10,7 +12,6 @@ use anyhow::Result;
 
 impl LyricsFormat {
     pub fn save(&self, name: &str, artist: &str) -> Result<()> {
-
         let data_path = dirs::data_local_dir().unwrap().join("Riri").join("Data");
 
         if !data_path.exists() {
@@ -30,9 +31,11 @@ impl LyricsFormat {
               //     std::fs::write(data_path.join(format!("{}-{}.xml", name, artist)), data)?;
               // }
         }
-        
+
         Ok(())
     }
+
+    const LYRICS_CACHE: OnceLock<(LyricXML, String, String)> = OnceLock::new();
 
     pub fn get_lyrics(
         name: &str,
@@ -41,18 +44,37 @@ impl LyricsFormat {
         offset: f64,
         length: i64,
     ) -> (String, f64) {
-
         let position = position + offset;
 
-        let path = dirs::data_local_dir()
-            .unwrap()
-            .join("Riri")
-            .join("Data")
-            .join(format!("{}-{}.xml", name, artist));
+        let lyric_cached = Self::LYRICS_CACHE;
+        let lyric_cached = lyric_cached.get_or_init(|| {
+            let path = dirs::data_local_dir()
+                .unwrap()
+                .join("Riri")
+                .join("Data")
+                .join(format!("{}-{}.xml", name, artist));
 
-        let data = std::fs::read_to_string(path).unwrap();
+            let data = std::fs::read_to_string(path).unwrap();
+            let lyrics = quick_xml::de::from_str::<LyricXML>(&data).unwrap();
+            (lyrics, name.to_string(), artist.to_string())
+        });
 
-        let lyrics = quick_xml::de::from_str::<LyricXML>(&data).unwrap();
+        let lyrics = if lyric_cached.1 != name || lyric_cached.2 != artist {
+            let path = dirs::data_local_dir()
+                .unwrap()
+                .join("Riri")
+                .join("Data")
+                .join(format!("{}-{}.xml", name, artist));
+
+            let data = std::fs::read_to_string(path).unwrap();
+            let lyrics = quick_xml::de::from_str::<LyricXML>(&data).unwrap();
+            Self::LYRICS_CACHE
+                .set((lyrics.clone(), name.to_string(), artist.to_string()))
+                .unwrap();
+            lyrics
+        } else {
+            lyric_cached.0.clone()
+        };
 
         let start_time = LyricsFormat::parse_time(&lyrics.body.div[0].p[0].begin);
 
@@ -90,14 +112,13 @@ impl LyricsFormat {
                 (title, duration)
             }
         };
-        
+
         (lyric, duration)
     }
 
     fn parse_time(time_string: &str) -> f64 {
-
         let time = time_string.split(":").collect::<Vec<&str>>();
-        
+
         match time.len() {
             1 => match time[0].contains("s") {
                 true => time[0].replace("s", "").parse::<f64>().unwrap(),
@@ -114,7 +135,6 @@ impl LyricsFormat {
     }
 
     pub fn length_cut(lyric: &str, len: i64) -> String {
-
         let mut length = 0;
 
         let mut temp = String::new();

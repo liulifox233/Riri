@@ -8,6 +8,17 @@
 
 A simple menubar tool to display lyrics for Apple Music in MacOS.
 
+## Install
+
+```zsh
+brew tap liulifox233/Riri
+brew install Riri --no-quarantine
+```
+
+> [!NOTE]
+> Why `--no-quarantine`?  
+> Because I don't have an Apple Developer account QAQ
+
 ## Usage
 
 First, get your user token from `https://music.apple.com/`, you can find it in cookie under `media-user-token`.

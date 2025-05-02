@@ -141,7 +141,7 @@ impl Riri {
                     }
                 }
             } else {
-                lyrics_tx.send("🎵".to_string()).await?;
+                lyrics_tx.send("Riri".to_string()).await?;
             }
         }
     }

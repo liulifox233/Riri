@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
     });
 
     let mut status_item = StatusItem::new(
-        "🎵",
+        "Riri",
         Menu::new(vec![
             MenuItem::new(
                 "Play/Pause",

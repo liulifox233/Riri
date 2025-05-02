@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::sync::Mutex;
 
 use crate::models::lyric_xml::LyricXML;
 
@@ -7,6 +7,8 @@ pub enum LyricsFormat {
     LyricXML(LyricXML),
     // SyncedLyricXML(SyncedLyricXML),
 }
+
+static LYRICS_CACHE: Mutex<Option<(LyricXML, String, String)>> = Mutex::new(None);
 
 use anyhow::Result;
 
@@ -35,8 +37,6 @@ impl LyricsFormat {
         Ok(())
     }
 
-    const LYRICS_CACHE: OnceLock<(LyricXML, String, String)> = OnceLock::new();
-
     pub fn get_lyrics(
         name: &str,
         artist: &str,
@@ -46,41 +46,50 @@ impl LyricsFormat {
     ) -> (String, f64) {
         let position = position + offset;
 
-        let lyric_cached = Self::LYRICS_CACHE;
-        let lyric_cached = lyric_cached.get_or_init(|| {
-            let path = dirs::data_local_dir()
-                .unwrap()
-                .join("Riri")
-                .join("Data")
-                .join(format!("{}-{}.xml", name, artist));
-
-            let data = std::fs::read_to_string(path).unwrap();
-            let lyrics = quick_xml::de::from_str::<LyricXML>(&data).unwrap();
-            (lyrics, name.to_string(), artist.to_string())
-        });
-
-        let lyrics = if lyric_cached.1 != name || lyric_cached.2 != artist {
-            let path = dirs::data_local_dir()
-                .unwrap()
-                .join("Riri")
-                .join("Data")
-                .join(format!("{}-{}.xml", name, artist));
-
-            let data = std::fs::read_to_string(path).unwrap();
-            let lyrics = quick_xml::de::from_str::<LyricXML>(&data).unwrap();
-            Self::LYRICS_CACHE
-                .set((lyrics.clone(), name.to_string(), artist.to_string()))
-                .unwrap();
-            lyrics
-        } else {
-            lyric_cached.0.clone()
+        let need_load = {
+            let cache = LYRICS_CACHE.lock().unwrap();
+            cache
+                .as_ref()
+                .map_or(true, |(_, cached_name, cached_artist)| {
+                    cached_name != name || cached_artist != artist
+                })
         };
 
-        let start_time = LyricsFormat::parse_time(&lyrics.body.div[0].p[0].begin);
+        if need_load {
+            let path = dirs::data_local_dir()
+                .unwrap()
+                .join("Riri")
+                .join("Data")
+                .join(format!("{}-{}.xml", name, artist));
 
-        let current_line = lyrics.body.div.iter().flat_map(|div| &div.p).find(|line| {
-            position < Self::parse_time(&line.end) && position > Self::parse_time(&line.begin)
-        });
+            if let Ok(data) = std::fs::read_to_string(path) {
+                if let Ok(new_lyrics) = quick_xml::de::from_str::<LyricXML>(&data) {
+                    let mut cache = LYRICS_CACHE.lock().unwrap();
+                    *cache = Some((new_lyrics, name.to_string(), artist.to_string()));
+                }
+            }
+        }
+
+        let lyrics_clone = {
+            let cache = LYRICS_CACHE.lock().unwrap();
+            match &*cache {
+                Some((lyrics, _, _)) => lyrics.clone(),
+                None => {
+                    return ("".to_string(), 0.3);
+                }
+            }
+        };
+
+        let start_time = LyricsFormat::parse_time(&lyrics_clone.body.div[0].p[0].begin);
+
+        let current_line = lyrics_clone
+            .body
+            .div
+            .iter()
+            .flat_map(|div| &div.p)
+            .find(|line| {
+                position < Self::parse_time(&line.end) && position > Self::parse_time(&line.begin)
+            });
 
         let (lyric, duration) = match current_line {
             Some(line) => {
@@ -92,7 +101,7 @@ impl LyricsFormat {
                 (lyric, duration)
             }
             None => {
-                let mut duration = match lyrics
+                let mut duration = match lyrics_clone
                     .body
                     .div
                     .iter()

@@ -1,13 +1,19 @@
 use crate::{
     lyrics::LyricsFormat,
     models::{apple_music::AppleMusic, user_storefront::UserStorefront},
+    player::Player,
+    utils::check_lyrics_exist,
+    MediaEvent,
 };
 use anyhow::{anyhow, Result};
 use fancy_regex::Regex;
 use reqwest::header::HeaderMap;
 use reqwest::Client;
-use std::path::PathBuf;
-use tokio::time;
+use std::{path::PathBuf, time::SystemTime};
+use tokio::{
+    sync::mpsc::{Receiver, Sender},
+    time::sleep,
+};
 use tracing::info;
 
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -19,12 +25,14 @@ pub struct Riri {
     #[serde(default)]
     offset: f64,
     length: Option<i64>,
+    #[serde(default, skip_serializing)]
+    player: Player,
 }
 
 impl Riri {
     pub async fn new(path: PathBuf) -> Result<Self> {
         let mut riri = serde_yaml::from_str::<Riri>(&std::fs::read_to_string(&path)?)?;
-
+        riri.player = Player::default();
         let now = chrono::Utc::now().timestamp_millis();
 
         if riri.expire.is_none() || riri.expire.unwrap() < now {
@@ -46,93 +54,96 @@ impl Riri {
         Ok(riri)
     }
 
-    pub async fn run(self, tx: tokio::sync::mpsc::Sender<String>) -> Result<()> {
+    pub async fn run(
+        &mut self,
+        lyrics_tx: Sender<String>,
+        mut media_event_rx: Receiver<MediaEvent>,
+    ) -> Result<()> {
         let mut not_download_able = Vec::new();
+        let mut downloaded = Vec::new();
+        let path = dirs::data_local_dir().unwrap().join("Riri").join("Data");
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let file_name = entry.file_name().into_string().unwrap();
+            if file_name.ends_with(".xml") {
+                let name_artist = file_name.trim_end_matches(".xml");
+                downloaded.push(name_artist.to_string());
+            }
+        }
 
         loop {
-            let current_track = apple_music::AppleMusic::get_current_track().ok();
-            if current_track.is_none() {
-                tx.send("🎵".to_string()).await?;
-                time::sleep(time::Duration::from_secs(1)).await;
-                continue;
-            } else {
-                let track = current_track.unwrap();
+            sleep(std::time::Duration::from_millis(100)).await;
+            if let Ok(event) = media_event_rx.try_recv() {
+                match event {
+                    MediaEvent::Paused => {
+                        self.player.playing = false;
+                    }
+                    MediaEvent::Playing(play_info) => {
+                        self.player.play_info = Some(play_info);
+                        self.player.playing = true;
+                    }
+                }
+            }
 
-                let name = track.name.clone();
+            if let Some(play_info) = &self.player.play_info {
+                if !self.player.playing {
+                    continue;
+                }
+                if play_info.id.is_none() {
+                    continue;
+                }
 
-                let artist = track.artist.clone();
-
-                let app_data =
-                    apple_music::AppleMusic::get_application_data().map_err(anyhow::Error::msg)?;
-
-                let position = app_data.player_position.unwrap_or(0.0);
-
-                if self.check_lyrics_exist(&name, &artist) {
-                    let (lyric, duration) = LyricsFormat::get_lyrics(
-                        &name,
-                        &artist,
+                if downloaded.contains(&format!("{}-{}", play_info.name, play_info.artist))
+                    || check_lyrics_exist(&play_info.name, &play_info.artist)
+                {
+                    let elapsed_duration =
+                        std::time::Duration::from_secs_f64(play_info.elapsed_time);
+                    let position = SystemTime::now()
+                        .duration_since(play_info.timestamp.checked_sub(elapsed_duration).unwrap())
+                        .unwrap()
+                        .as_secs_f64();
+                    let (lyric, _) = LyricsFormat::get_lyrics(
+                        &play_info.name,
+                        &play_info.artist,
                         position,
                         self.offset,
                         self.length.unwrap(),
                     );
-
-                    tx.send(lyric).await?;
-                    time::sleep(time::Duration::from_secs_f64(duration)).await;
+                    lyrics_tx.send(lyric).await?;
                 } else {
-                    tx.send(format!(
-                        "▶︎ {}",
-                        LyricsFormat::length_cut(&name, self.length.unwrap())
-                    ))
-                    .await?;
-
-                    if not_download_able.contains(&format!("{}-{}", name, artist)) {
-                        time::sleep(time::Duration::from_secs(1)).await;
+                    if not_download_able
+                        .contains(&format!("{}-{}", play_info.name, play_info.artist))
+                    {
                         continue;
                     }
 
-                    info!("Downloading lyrics for {} by {}", name, artist);
-
-                    match self
-                        .download_lyrics(&name, &artist, &mut not_download_able)
-                        .await
-                    {
-                        Ok(_) => info!("Download success!"),
-                        Err(e) => info!("Download error: {:?}", e),
-                    };
+                    info!(
+                        "Downloading lyrics for {} by {}",
+                        play_info.name, play_info.artist
+                    );
+                    if let Some(id) = play_info.id {
+                        match self
+                            .download_by_id(id, &play_info.name, &play_info.artist)
+                            .await
+                        {
+                            Ok(_) => {
+                                info!("Download success!");
+                                downloaded.push(format!("{}-{}", play_info.name, play_info.artist));
+                            }
+                            Err(e) => {
+                                info!("Download error: {:?}", e);
+                                not_download_able
+                                    .push(format!("{}-{}", play_info.name, play_info.artist));
+                            }
+                        };
+                    } else {
+                        not_download_able.push(format!("{}-{}", play_info.name, play_info.artist));
+                    }
                 }
+            } else {
+                lyrics_tx.send("🎵".to_string()).await?;
             }
         }
-    }
-
-    async fn download_lyrics(
-        &self,
-        name: &str,
-        artist: &str,
-        not_download_able: &mut Vec<String>,
-    ) -> Result<()> {
-        match self.get_id_by_name_artist(name, artist).await {
-            Ok(id) => {
-                info!("Get id success!");
-                if let Err(e) = self.download_by_id(&id, name, artist).await {
-                    not_download_able.push(format!("{}-{}", name, artist));
-                    return Err(e);
-                }
-                Ok(())
-            }
-            Err(e) => {
-                not_download_able.push(format!("{}-{}", name, artist));
-                Err(e)
-            }
-        }
-    }
-
-    fn check_lyrics_exist(&self, name: &str, artist: &str) -> bool {
-        let path = dirs::data_local_dir()
-            .unwrap()
-            .join("Riri")
-            .join("Data")
-            .join(format!("{}-{}.xml", name, artist));
-        path.exists()
     }
 
     pub fn create_header(&self) -> HeaderMap {
@@ -186,17 +197,11 @@ impl Riri {
         Ok(())
     }
 
-    pub fn create_lyrics_url(&self, song_id: &str) -> String {
+    pub fn create_lyrics_url(&self, song_id: i64) -> String {
         format!("https://amp-api.music.apple.com/v1/catalog/{}/songs/{}?include[songs]=albums,lyrics,syllable-lyrics", self.storefront.clone().unwrap(), song_id)
     }
 
-    pub fn create_search_url(&self, song_name: &str, artist_name: &str) -> String {
-        let search_term = format!("{} {}", song_name, artist_name);
-        let format = urlencoding::encode(search_term.as_str());
-        format!("https://amp-api-edge.music.apple.com/v1/catalog/{}/search?limit=5&platform=web&term={}&with=serverBubbles&types=songs%2Cactivities", self.storefront.clone().unwrap(), format)
-    }
-
-    pub async fn download_by_id(&self, song_id: &str, name: &str, artist_name: &str) -> Result<()> {
+    pub async fn download_by_id(&self, song_id: i64, name: &str, artist_name: &str) -> Result<()> {
         let url = self.create_lyrics_url(song_id);
 
         let headers = self.create_header();
@@ -209,7 +214,7 @@ impl Riri {
 
         let apple_music = serde_json::from_str::<AppleMusic>(&res_string)?;
 
-        if apple_music.data.first().is_none() {
+        if apple_music.data.is_empty() {
             return Err(anyhow!("No such a song"));
         }
 
@@ -231,25 +236,6 @@ impl Riri {
         lyrics.save(name, artist_name)?;
         Ok(())
     }
-
-    pub async fn get_id_by_name_artist(&self, name: &str, artist_name: &str) -> Result<String> {
-        let headers = self.create_header();
-        let client = Client::builder().default_headers(headers).build()?;
-        let url = self.create_search_url(name, artist_name);
-        let res = client.get(url).send().await?;
-        let res_json: serde_json::Value = res.json().await?;
-        let id = &res_json["results"]["top"]["data"]
-            .as_array()
-            .ok_or(anyhow!("Invalid JSON structure"))?
-            .iter()
-            .find(|data| {
-                data["attributes"]["name"] == name
-                    && data["attributes"]["artistName"] == artist_name
-            })
-            .ok_or(anyhow!("Song not found"))?["id"];
-
-        Ok(id.as_str().unwrap().to_string())
-    }
 }
 
 #[cfg(test)]
@@ -265,9 +251,10 @@ mod tests {
             expire: None,
             offset: 0.0,
             length: None,
+            player: Player::default(),
         };
         riri.get_authorization().await.unwrap();
 
-        assert!(riri.authorization.is_some())
+        assert!(riri.authorization.is_some());
     }
 }

@@ -76,6 +76,7 @@ impl Riri {
             if let Ok(event) = media_event_rx.try_recv() {
                 match event {
                     MediaEvent::Paused => {
+                        self.player.play_info = None;
                         self.player.playing = false;
                     }
                     MediaEvent::Playing(play_info) => {
@@ -86,10 +87,8 @@ impl Riri {
             }
 
             if let Some(play_info) = &self.player.play_info {
-                if !self.player.playing {
-                    continue;
-                }
-                if play_info.id.is_none() {
+                if play_info.id.is_none() || !self.player.playing {
+                    lyrics_tx.send(format!("▶︎ {}", play_info.name)).await?;
                     continue;
                 }
 
@@ -114,6 +113,7 @@ impl Riri {
                     if not_download_able
                         .contains(&format!("{}-{}", play_info.name, play_info.artist))
                     {
+                        lyrics_tx.send("Riri".to_string()).await?;
                         continue;
                     }
 
